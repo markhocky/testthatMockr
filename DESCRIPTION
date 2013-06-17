@@ -11,9 +11,9 @@ Description: To be used with testthat testing package. Provides objects which
 License: GPL-2
 Depends:
     R (>= 3.0.0),
-    testthat,
-    methods
+    testthat
 Suggests:
     devtools
 Collate:
     'Mock.R'
+    'TestHelpers.R'

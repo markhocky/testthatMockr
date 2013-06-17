@@ -73,6 +73,47 @@ context("Method stubs")
 				expect_that(returned, equals(return.value))
 			})
 	
+	test_that("Mock registers method calls", {
+				
+				mock <- Mock()
+				mockMethod(mock, "TestMethod")
+				mock2 <- Mock()
+				
+				expect_that(TestMethod(mock2), throws_error("Unexpected method call"))
+			})
+	
+	test_that("Mocks can have separate return values from same method", {
+				
+				mock1 <- Mock()
+				mock2 <- Mock()
+				
+				mockMethod(mock1, "TestMethod", return.value = 1)
+				mockMethod(mock2, "TestMethod", return.value = 2)
+				
+				return1 <- TestMethod(mock1)
+				return2 <- TestMethod(mock2)
+				
+				expect_that(return1, equals(1))
+				expect_that(return2, equals(2))
+				expect_that(mock1, called_once("TestMethod"))
+				expect_that(mock2, called_once("TestMethod"))
+			})
+	
+	test_that("Multiple Mocks can have same method assigned with one call", {
+				
+				mock1 <- Mock("list")
+				mock2 <- Mock("list")
+				
+				mockMethod(list(mock1, mock2), "TestMethod", return.value = 1)
+				
+				return1 <- TestMethod(mock1)
+				return2 <- TestMethod(mock2)
+				
+				expect_that(return1, equals(1))
+				expect_that(return2, equals(1))
+				expect_that(mock1, called_once("TestMethod"))
+				expect_that(mock2, called_once("TestMethod"))
+			})
 	
 	
 	

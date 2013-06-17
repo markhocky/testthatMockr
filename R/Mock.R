@@ -4,6 +4,7 @@ Mock <- function(spec) {
 	
 	mock <- list()
 	mock$call.results <- new.env()
+	mock$method.returns <- new.env()
 	if (missing(spec)) {
 		class(mock) <- "mock"
 	} else {
@@ -22,17 +23,43 @@ mockMethod <- function(mock, method.name, return.value) {
 	if (missing(return.value)) {
 		return.value <- NULL
 	}
-	assign(method.name, createMockCall(return.value), pos = search()[2])
+	if (is.list(mock) && !identical(names(mock), names(Mock()))) {
+		multiple_mock_method(mock, method.name, return.value)
+	}
+	assign_method_value(mock, method.name, return.value)
+	assign(method.name, create_mock_call(mock), pos = search()[2])
 }
 
-createMockCall <- function(return.value) {
+multiple_mock_method <- function(mock.list, method.name, return.value) {
+	for (mock in mock.list) {
+		mockMethod(mock, method.name, return.value)
+	}
+}
+
+assign_method_value <- function(mock, method.name, return.value) {
+	mock$method.returns[[method.name]] <- return.value
+}
+
+method_value <- function(mock, method.name) {
+	return(mock$method.returns[[method.name]])
+}
+
+has_method <- function(mock, method.name) {
+	methods <- ls(mock$method.returns)
+	return(method.name %in% methods)
+}
+
+create_mock_call <- function(mock) {
 	
 	mock_call <- function(mock, ...) {
 		call <- as.list(match.call())
 		call.name <- as.character(call[[1]])
+		if (!has_method(mock, call.name)) {
+			stop(paste("Unexpected method call '", call.name, "'", sep = ""))
+		}
 		call.args <- lapply(call[-1], eval, env = parent.frame())
 		.add_call_results(mock, call.name, call.args)
-		return(return.value)
+		return(method_value(mock, call.name))
 	}	
 	return(mock_call)
 }
@@ -71,14 +98,10 @@ called_once_with <- function(method.name, ...) {
 		expected.args <- list(...)
 		actual.args <- mock_calls(actual, method.name)
 		if (length(actual.args) != 1) {
-			expectation(FALSE, 
-				paste("Was called ", length(actual.args), "times"))
+			expectation(FALSE, paste("Was called ", length(actual.args), "times"))
 		} else {
 			actual.args <- mock_arguments(actual, method.name, 1)
-			expected <- paste(capture.output(str(expected.args)), collapse = "\n")
-			received <- paste(capture.output(str(actual.args)), collapse = "\n")
-			expectation(identical(actual.args, expected.args), 
-				paste("\nExpected: ", expected, "But got: ", received, sep = "\n"))
+			expected_vs_actual(expected.args, actual.args, ignore.attributes = TRUE)
 		}
 	}
 }
