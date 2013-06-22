@@ -1,0 +1,200 @@
+% 
+\documentclass[a4paper]{article}
+\usepackage{Sweave}
+
+\title{Using the mockR package}
+\author{Mark Hochguertel}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+  The \emph{mockR} package is designed to be used with Hadley Wickham's
+  \emph{testthat} package for unit testing. Actually, \emph{mockR} isn't going
+  to be much use to you unless you are (or plan to be) conducting unit
+  testing with \emph{testthat}.
+  
+  This Vignette is something of a tutorial to demonstrate the functionality of
+  \emph{mockR}. Subsequent sections step through the different aspects currently
+  implemented.
+  
+  What \emph{mockR} intends to provide is the ability to mock out parts of your
+  program that you don't need the details for as part of your test. This allows
+  you to focus your efforts on the object actually being tested, as opposed to
+  spending far too much time creating and setting up supporting objects just so
+  you can check the behaviour of one of the objects.
+  
+  This is where \emph{mockR} comes in, by allowing you to quickly mock up some
+  objects and methods and get on with the real business of testing.
+
+\subsection{Inspiration}
+
+  Aside from the excellent \emph{testthat} package, the inspiration for the
+  desired functionality of \emph{mockR} has been drawn heavily from the \emph{Python} 
+  package \emph{Mock}. In fact, \emph{mockR} has been an attempt at a shameless
+  copy of the functionality found in \emph{Mock}. I feel it's still a way off
+  being able to replicate the functionality in \emph{Mock}, but certainly for
+  my own unit testing \emph{mockR} has proved very handy.
+  
+
+\subsection{Further reading}
+
+  This Vignette is intended to show you the usage of the \emph{mockR} package.
+  I'll leave the discussion about mock objects (and related topics) to
+  people who are far more qualified. 
+  
+  Some other reading to consider are:
+  The \emph{Python Mock} package has very good documentation:
+   http://www.voidspace.org.uk/python/mock/index.html
+  and this shows the other potential features which might be implemented into
+  \emph{mockR} in the future.
+  
+  ** Find a good explanation of mock objects in a web page **
+  
+  The unit tests for this package will also hopefully help to demonstrate the
+  usage of \emph{mockR}.
+
+
+\section{Making mock objects}
+
+  Intro
+  
+  A bit about the mock internals
+  
+  Creating a basic mock
+  Creating a mock with a specification - show assignment to an S4 object.
+
+<<echo=FALSE>>=
+	library(devtools)
+	library(testthat)
+	load_all("D:/Code/R/Development/Packages/mockR")
+	
+	setClass("MyS4object",
+			representation(
+				child = "list"
+			))
+	
+@
+
+
+<<>>=
+	s4.object <- new("MyS4object")
+	getSlots("MyS4object")
+	# note that slot 'child' only accepts objects with class 'list'
+	message <- try(s4.object@child <- Mock())
+	class(message)
+	s4.object@child <- Mock("list")
+@
+
+
+
+\section{Making mock methods}
+
+  Intro
+  
+  test cases:
+  Assigning and checking a single method call
+
+<<>>=
+	test_function <- function(object) {
+		my_mock_method(object)
+	}
+	mock <- Mock()
+	mockMethod(mock, "my_mock_method")
+@
+<<results=hide>>=
+	test_function(mock)
+@
+<<>>=
+	# Typical usage is like this:
+	expect_that(mock, called_once("my_mock_method"))
+	# But doesn't show output here, so we'll be calling like so
+	# from now on:
+	called_once("my_mock_method")(mock)
+@
+<<results=hide>>=
+	test_function(mock)
+@
+<<>>=
+	called_once("my_mock_method")(mock)
+	
+@
+
+  Of course the above is a trivial example, but hopefully it will become evident
+  how this may be used to check that certain events have happened during a test.
+  
+  Assigning a method call with a return value
+  
+<<>>=
+	mock <- Mock()
+	mockMethod(mock, "method_return", return.value = "mocked!")
+	method_return(mock)
+	called_once("method_return")(mock)
+@
+  
+  Assigning the same method to multiple mocks at the same time.
+  
+<<>>=
+	mock1 <- Mock()
+	mock2 <- Mock()
+	mockMethod(list(mock1, mock2), "mock_method")
+	result1 <- mock_method(mock1)
+	result2 <- mock_method(mock2)
+	called_once("mock_method")(mock1)
+	called_once("mock_method")(mock2)
+@
+
+  Checking arguments passed to mock calls.
+
+<<>>=
+	mock <- Mock()
+	mockMethod(mock, "method_with_args")
+	result <- method_with_args(mock, 1, 2)
+	called_once_with("method_with_args", 1, 2)(mock)
+@
+
+  Returning different values for each mock.
+
+<<>>=
+	mock1 <- Mock()
+	mock2 <- Mock()
+	mockMethod(mock1, "mock_method", return.value = "first_mock")
+	mockMethod(mock2, "mock_method", return.value = "second_mock")
+	mock_method(mock1)
+	mock_method(mock2)
+	mock_method(mock1)
+	called_once("mock_method")(mock1)
+	called_once("mock_method")(mock2)
+@
+
+  Calling an unregistered method on a mock
+
+<<>>=
+	mock1 <- Mock()
+	mock2 <- Mock()
+	mockMethod(mock1, "mock1_only", return.value = "OK")
+	mock1_only(mock1)
+@
+<<eval=FALSE>>=
+	mock1_only(mock2)
+@
+<<echo=FALSE>>=
+	error <- try(mock1_only(mock2))
+	attributes(error)$condition$message
+@
+
+
+
+
+
+\end{document}
+
+
+
+
+
+
+
+

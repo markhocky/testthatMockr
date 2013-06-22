@@ -29,10 +29,11 @@ Mock <- function(spec) {
 		} else {
 			spec <- as.character(spec)
 		}
-		class(mock) <- spec
+		class(mock) <- c(spec, "mock")
 	}
 	return(mock)
 }
+
 
 #' Assign a method to a Mock object
 #' 
@@ -49,6 +50,18 @@ Mock <- function(spec) {
 #' The optional \code{return.value} can be used to specifically control the output from 
 #' the \code{Mock}, and different \code{return.value}s can be assigned to different 
 #' \code{Mock} objects.
+#' 
+#' @details 
+#' The \code{mockMethod} function will attempt to create a method / function specific
+#' to the mock without hurting any existing functions.
+#' If there are no existing functions of name \code{method.name}, then a function is 
+#' assigned with that name.
+#' If a function of that name exists, then \code{mockMethod} will turn this into a 
+#' generic S3 function. The existing function will become the default, and the mock
+#' function will be a method assigned for \code{class(mock)}.
+#' If the existing function is already an S3 generic, then \code{mockMethod} will 
+#' create a method for \code{class(mock)}, but note that this will override any existing
+#' methods if the \code{mock} is imitating another class.
 #' 
 #' @examples
 #' mockMethod(mock, "TestMethod") # returns NULL
@@ -74,12 +87,84 @@ mockMethod <- function(mock, method.name, return.value) {
 	if (missing(return.value)) {
 		return.value <- NULL
 	}
-	if (is.list(mock) && !identical(names(mock), names(Mock()))) {
+	if (is_list_of_mocks(mock)) {
 		multiple_mock_method(mock, method.name, return.value)
+	} else {
+		test.package <- search()[2]
+		search.env <- parent.frame()
+		if (exists(method.name, search.env)) {
+			if (is_mock_method(method.name, mock, search.env)) {
+				assign_method_to(mock, method.name, return.value)
+			}
+			if (!is_generic(method.name, search.env)) {
+				setAs_S3generic(method.name = method.name, search.env = search.env)
+			}
+			assign_S3method(method.name = method.name, mock = mock, return.value = return.value, test.package = test.package)
+		} else {
+			assign_normal_function(mock = mock, method.name = method.name, return.value = return.value, test.package = test.package)
+		}
 	}
-	assign_method_value(mock, method.name, return.value)
-	assign(method.name, create_mock_call(mock), pos = search()[2])
 }
+
+
+is_list_of_mocks <- function(mock) {
+	is.list(mock) && !identical(names(mock), names(Mock()))
+}
+
+is_mock_method <- function(method.name, mock, search.env) {
+	identical(body(get(method.name, search.env)), body(create_mock_call(mock)))
+}
+
+multiple_mock_method <- function(mock.list, method.name, return.value) {
+	for (mock in mock.list) {
+		mockMethod(mock, method.name, return.value)
+	}
+}
+
+assign_method_to <- function(mock, method.name, return.value) {
+	method.name <- remove_classname(method.name, mock)
+	mock$method.returns[[method.name]] <- return.value
+}
+
+is_generic <- function(method.name, search.env) {
+	return(suppressWarnings(utils:::findGeneric(method.name, search.env) != ""))
+}
+
+setAs_S3generic <- function(method.name, search.env) {
+	
+	existing.method.env <- get_env_containing(method.name, search.env)
+	existing.method <- existing.method.env[[method.name]]
+	
+	generic.call <- paste0("function(mock, ...) UseMethod(\"", 
+			method.name, "\")")
+	generic.call <- parse(text = generic.call)
+	assign(method.name, 
+			eval(generic.call), pos = existing.method.env)
+	assign(paste0(method.name, ".default"),
+			existing.method, pos = existing.method.env)
+}
+
+assign_S3method <- function(method.name, mock, return.value, test.package) {
+	mock.method.name <- paste(method.name, class(mock)[1], sep = ".")
+	assign_method_to(mock, mock.method.name, return.value)
+	assign(mock.method.name, 
+			create_mock_call(mock), pos = test.package)
+}
+
+assign_normal_function <- function(mock, method.name, return.value, test.package) {
+	assign_method_to(mock, method.name, return.value)
+	assign(method.name, create_mock_call(mock), pos = test.package)
+}
+
+get_env_containing <- function(object, env = parent.frame()) {
+	if (exists(object, env, inherits = FALSE)) {
+		return(env)
+	} else {
+		get_env_containing(object, env = parent.env(env))
+	}
+}
+
+
 
 #' Assert that the named method was called once and only once.
 #' 
@@ -105,6 +190,7 @@ called_once <- function(method.name) {
 				paste("Expected one call, was called", number.of.calls, "times"))
 	}
 }
+
 
 #' Assert method call and arguments called with.
 #' 
@@ -140,26 +226,35 @@ called_once_with <- function(method.name, ...) {
 	}
 }
 
-
-multiple_mock_method <- function(mock.list, method.name, return.value) {
-	for (mock in mock.list) {
-		mockMethod(mock, method.name, return.value)
-	}
-}
-
-assign_method_value <- function(mock, method.name, return.value) {
-	mock$method.returns[[method.name]] <- return.value
-}
-
-method_value <- function(mock, method.name) {
-	return(mock$method.returns[[method.name]])
-}
-
 has_method <- function(mock, method.name) {
+	method.name <- remove_classname(method.name, mock)
 	methods <- ls(mock$method.returns)
 	return(method.name %in% methods)
 }
 
+
+remove_classname <- function(method, mock) {
+	class.name <- paste0(".", class(mock)[1])
+	if (grepl(class.name, method)) {
+		return(substr(method, 1, regexpr(class.name, method) - 1))
+	} else {
+		return(method)
+	}
+}
+
+mock_calls <- function(mock, method) {
+	return(mock$call.results[[method]])
+}
+
+mock_arguments <- function(mock, method, instance) {
+	calls <- mock_calls(mock, method)
+	called.arguments <- calls[[instance]][-1]
+	attributes(called.arguments) <- NULL
+	return(called.arguments)
+}
+
+
+#' The function for recording activity on the mock
 create_mock_call <- function(mock) {
 	
 	mock_call <- function(mock, ...) {
@@ -176,6 +271,7 @@ create_mock_call <- function(mock) {
 }
 
 add_call_results <- function(mock, method, arguments) {
+	method <- remove_classname(method, mock)
 	existing.calls <- mock_calls(mock, method)
 	if (length(existing.calls)) {
 		mock$call.results[[method]] <- c(list(existing.calls), list(arguments))
@@ -184,18 +280,19 @@ add_call_results <- function(mock, method, arguments) {
 	}
 }
 
-mock_calls <- function(mock, method) {
-	return(mock$call.results[[method]])
+method_value <- function(mock, method.name) {
+	method.name <- remove_classname(method.name, mock)
+	return(mock$method.returns[[method.name]])
 }
 
-mock_arguments <- function(mock, method, instance) {
-	calls <- mock_calls(mock, method)
-	called.arguments <- calls[[instance]][-1]
-	attributes(called.arguments) <- NULL
-	return(called.arguments)
+#' Utility function for removing mock methods - does not remove generics
+cleanMethods <- function(methods) {
+	
+	for (method in methods) {
+		method.env <- get_env_containing(method)
+		rm(list = as.character(methods(method)), envir = method.env)
+	}
 }
-
-
 
 
 
