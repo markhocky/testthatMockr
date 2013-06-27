@@ -66,6 +66,14 @@ context("Method creation")
 				expect_that(mock, called_once("TestMethod_3"))
 			})
 	
+	test_that("Mock method created when existing S3 generic", {
+				
+				mock <- Mock()
+				mockMethod(mock, "plot", return.value = NULL)
+				plot(mock)
+				expect_that(mock, called_once("plot"))
+			})
+	
 	test_that("Mock method created when existing S4 generic", {
 				
 				mock <- Mock()

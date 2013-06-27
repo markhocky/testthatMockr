@@ -141,10 +141,23 @@ make_S3andS4_generics <- function(method.name, mock, method) {
 	if(no_dots_args(method)) {
 		method <- add_dots_arg(method)
 	}
-	setAs_S3generic(method.name, method)
+	if (!is_S3generic(method)) {
+		setAs_S3generic(method.name, method)
+	}
 	setGeneric(method.name, method, where = "package:mockR")
 	assign(paste0(method.name, ".Mock"), create_mock_call(mock), 
-			envir = environment(method))
+			pos = grep("mockR", search()))
+}
+
+is_S3generic <- function(method) {
+	any(grepl("UseMethod", body(method)))
+}
+
+setAs_S3generic <- function(method.name, method) {
+	generic <- method
+	body(generic) <- parse(text = paste0("UseMethod(\"", method.name, "\")"))
+	assign(method.name, generic, pos = environment(method))
+	assign(paste0(method.name, ".default"), method, pos = environment(method))
 }
 
 no_dots_args <- function(method) {
@@ -154,13 +167,6 @@ no_dots_args <- function(method) {
 add_dots_arg <- function(method) {
 	formals(method) <- c(formals(method), alist("..." = ))
 	return(method)
-}
-
-setAs_S3generic <- function(method.name, method) {
-	generic <- method
-	body(generic) <- parse(text = paste0("UseMethod(\"", method.name, "\")"))
-	assign(method.name, generic, pos = environment(method))
-	assign(paste0(method.name, ".default"), method, pos = environment(method))
 }
 
 assign_S4_method <- function(mock, method, method.name, return.value) {
