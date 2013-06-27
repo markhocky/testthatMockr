@@ -2,35 +2,48 @@
 #' 
 #' The \code{Mock} object is designed to mimic another object's behaviour, and also 
 #' provide functionality to record operations performed on it. The \code{Mock} can be 
-#' used to stub out an object yet to be developed, or it can be used to mimic an 
+#' used as a stub for an object yet to be developed, or it can be used to mimic an 
 #' existing object.
 #' 
 #' The \code{Mock} can be provided with the name of a class to mimic via the \code{spec}
 #' parameter. In this case the Mock will be assigned this class, which is particularly 
 #' useful if the \code{Mock} is to be used in the slot of another S4 object.
 #' The \code{spec} parameter is optional however, and if not provided the \code{Mock}
-#' will simply be assigned the class "mock". 
+#' will simply be assigned the class "Mock".
+#' 
+#' @details 
+#' The \code{Mock} contains two slots:
+#' \item{call.results}{an environment used to store calls made on the \code{Mock} along 
+#' with any arguments passed in as part of that call.}
+#' \item{methods}{an environment containing the names of methods registered for the 
+#' \code{Mock} along with the optional values to be returned from the call}
+#' These slots are not intended to be used directly, but rather are the containers used
+#' by the \code{Mock}s methods, and for testing. 
 #' 
 #' @return A \code{Mock} object ready for use in your \code{testthat} unit tests.
 #' 
 #' @param spec a character string naming the class to be imitated.
 #' 
+#' @seealso \link{mockMethod}
+#' 
 #' @export 
-Mock <- function(spec) {
+Mock <- function(spec = NULL) {
 	
-	mock <- list()
-	mock$call.results <- new.env()
-	mock$method.returns <- new.env()
-	if (missing(spec)) {
-		class(mock) <- "mock"
-	} else {
+	if (!missing(spec)) {
 		if (is.name(substitute(spec))) {
-			spec <- class(spec)
+			spec <- class(spec)[1]
 		} else {
-			spec <- as.character(spec)
+			as.character(spec)
 		}
-		class(mock) <- c(spec, "mock")
 	}
+	setClass("Mock",
+			representation(
+					call.results = "environment", 
+					methods = "environment"
+			), contains = spec)
+	mock <- new("Mock")
+	mock@call.results <- new.env(emptyenv())
+	mock@methods <- new.env(emptyenv())
 	return(mock)
 }
 
@@ -45,23 +58,34 @@ Mock <- function(spec) {
 #' 
 #' The same method can be applied to multiple \code{Mock} objects by passing in a list of
 #' \code{Mock}s as the first parameter. This is effectively the same as calling the 
-#' \code{mockMethod} repeatedly on each \code{Mock}.
+#' \code{mockMethod} repeatedly on each different \code{Mock}.
 #' 
 #' The optional \code{return.value} can be used to specifically control the output from 
 #' the \code{Mock}, and different \code{return.value}s can be assigned to different 
 #' \code{Mock} objects.
 #' 
+#' #' At this stage of development, only methods which take the \code{Mock} as their first
+#' argument can be imitated.
+#' 
 #' @details 
 #' The \code{mockMethod} function will attempt to create a method / function specific
 #' to the mock without hurting any existing functions.
-#' If there are no existing functions of name \code{method.name}, then a function is 
-#' assigned with that name.
-#' If a function of that name exists, then \code{mockMethod} will turn this into a 
-#' generic S3 function. The existing function will become the default, and the mock
-#' function will be a method assigned for \code{class(mock)}.
-#' If the existing function is already an S3 generic, then \code{mockMethod} will 
-#' create a method for \code{class(mock)}, but note that this will override any existing
-#' methods if the \code{mock} is imitating another class.
+#' If there are no existing functions of name \code{method.name}, then an S4 method 
+#' (with associated generic) is created.
+#' If a function of that name exists, then \code{mockMethod} will turn this into generic 
+#' S3 and S4 methods. The existing function will become the default, and the mock
+#' function will be a method assigned for signature "Mock".
+#' If the existing function is already an S3 or S4 generic, then \code{mockMethod} will 
+#' create a method with signature of class "Mock".
+#' 
+#' For existing functions, the new generic is assigned in the same environment as the 
+#' existing function (effectively overwriting it), and \code{Mock} methods that are
+#' created are assigned in the \code{mockR} package environment. Note that this means
+#' that there must be write permission to the environment where the existing function
+#' resides. This will not always be the case, for example if trying to mock a 
+#' non-exported function from a package. In these cases, a call to \link{unlockBinding} 
+#' on the existing function prior to setting the mock method may work. This is 
+#' potentially something to be included in future versions of \code{mockR}.
 #' 
 #' @examples
 #' mockMethod(mock, "TestMethod") # returns NULL
@@ -69,106 +93,101 @@ Mock <- function(spec) {
 #' mockMethod(list(mock1, mock2), "TestMethod") # assigns "TestMethod" to both mock1 and 
 #' mock2 
 #' 
-#' @return Returns NULL, but as a side effect the function is assigned to the first
-#' \code{package} in the search path (excluding the base package). This should almost 
-#' always be the package being tested.
+#' @return Returns NULL, but called for it's side effect of setting up the mock methods.
 #' 
 #' @param mock The \code{Mock} object which the method is related to, or a list of 
 #' \code{Mock}s.
 #' @param method.name The method / function name.
 #' @param return.value The (optional) value to be returned from future calls to 
-#' method.name.
+#' \code{method.name}. Defaults to NULL.
 #' 
 #' @seealso \code{\link{Mock}}
 #' 
 #' @export
-mockMethod <- function(mock, method.name, return.value) {
+mockMethod <- function(mock, method.name, return.value = NULL) {
 	
-	if (missing(return.value)) {
-		return.value <- NULL
-	}
 	if (is_list_of_mocks(mock)) {
 		multiple_mock_method(mock, method.name, return.value)
 	} else {
-		test.package <- search()[2]
-		search.env <- parent.frame()
-		if (exists(method.name, search.env)) {
-			if (is_mock_method(method.name, mock, search.env)) {
-				assign_method_to(mock, method.name, return.value)
-			}
-			if (!is_generic(method.name, search.env)) {
-				setAs_S3generic(method.name = method.name, search.env = search.env)
-			}
-			assign_S3method(method.name = method.name, mock = mock, return.value = return.value, test.package = test.package)
-		} else {
-			assign_normal_function(mock = mock, method.name = method.name, return.value = return.value, test.package = test.package)
+		method <- tryCatch(
+				get(method.name, parent.frame()), 
+				error = function(e) NULL)
+		if (is.null(method)) {
+			method <- make_S4_generic(method.name)
 		}
+		if (is_function_but_notS4(method)) {
+			make_S3andS4_generics(method.name, mock, method)
+		}
+		assign_S4_method(mock, method, method.name, return.value)
 	}
 }
-
 
 is_list_of_mocks <- function(mock) {
-	is.list(mock) && !identical(names(mock), names(Mock()))
+	is.list(mock) && !isS4(mock)
 }
 
-is_mock_method <- function(method.name, mock, search.env) {
-	identical(body(get(method.name, search.env)), body(create_mock_call(mock)))
+is_function_but_notS4 <- function(method) {
+	is.function(method) & !isS4(method)
 }
 
-multiple_mock_method <- function(mock.list, method.name, return.value) {
-	for (mock in mock.list) {
-		mockMethod(mock, method.name, return.value)
+make_S4_generic <- function(method.name) {
+	generic <- paste0("function(mock, ...) standardGeneric(\"", method.name, "\")")
+	generic <- parse(text = generic)
+	setGeneric(method.name, eval(generic), where = "package:mockR")
+	return(get(method.name))
+}
+
+make_S3andS4_generics <- function(method.name, mock, method) {
+	if(no_dots_args(method)) {
+		method <- add_dots_arg(method)
 	}
+	setAs_S3generic(method.name, method)
+	setGeneric(method.name, method, where = "package:mockR")
+	assign(paste0(method.name, ".Mock"), create_mock_call(mock), 
+			envir = environment(method))
+}
+
+no_dots_args <- function(method) {
+	!"..." %in% names(formals(method))
+}
+
+add_dots_arg <- function(method) {
+	formals(method) <- c(formals(method), alist("..." = ))
+	return(method)
+}
+
+setAs_S3generic <- function(method.name, method) {
+	generic <- method
+	body(generic) <- parse(text = paste0("UseMethod(\"", method.name, "\")"))
+	assign(method.name, generic, pos = environment(method))
+	assign(paste0(method.name, ".default"), method, pos = environment(method))
+}
+
+assign_S4_method <- function(mock, method, method.name, return.value) {
+	mock.method <- create_mock_call(mock)
+	formals(mock.method) <- formals(method)
+	setMethod(method.name,
+			signature("Mock"),
+			mock.method)
+	assign_method_to(mock, method.name, return.value)
 }
 
 assign_method_to <- function(mock, method.name, return.value) {
 	method.name <- remove_classname(method.name, mock)
-	mock$method.returns[[method.name]] <- return.value
+	mock@methods[[method.name]] <- return.value
 }
 
-is_generic <- function(method.name, search.env) {
-	return(suppressWarnings(utils:::findGeneric(method.name, search.env) != ""))
-}
-
-setAs_S3generic <- function(method.name, search.env) {
-	
-	existing.method.env <- get_env_containing(method.name, search.env)
-	existing.method <- existing.method.env[[method.name]]
-	
-	generic.call <- paste0("function(mock, ...) UseMethod(\"", 
-			method.name, "\")")
-	generic.call <- parse(text = generic.call)
-	assign(method.name, 
-			eval(generic.call), pos = existing.method.env)
-	assign(paste0(method.name, ".default"),
-			existing.method, pos = existing.method.env)
-}
-
-assign_S3method <- function(method.name, mock, return.value, test.package) {
-	mock.method.name <- paste(method.name, class(mock)[1], sep = ".")
-	assign_method_to(mock, mock.method.name, return.value)
-	assign(mock.method.name, 
-			create_mock_call(mock), pos = test.package)
-}
-
-assign_normal_function <- function(mock, method.name, return.value, test.package) {
-	assign_method_to(mock, method.name, return.value)
-	assign(method.name, create_mock_call(mock), pos = test.package)
-}
-
-get_env_containing <- function(object, env = parent.frame()) {
-	if (exists(object, env, inherits = FALSE)) {
-		return(env)
-	} else {
-		get_env_containing(object, env = parent.env(env))
+multiple_mock_method <- function(mock.list, method.name, return.value) {
+	mockMethod(mock.list[[1]], method.name, return.value)
+	for (mock in mock.list[-1]) {
+		assign_method_to(mock, method.name, return.value)
 	}
 }
 
 
-
 #' Assert that the named method was called once and only once.
 #' 
-#' The \code{called_once} function is designed to be called from within \code{testthat}s
+#' The \code{called_once} function is designed to be called from within \code{test_that}s
 #' \code{expect_that} assertion. This checks the call records of the \code{Mock} to 
 #' confirm that the method was called once, and only once. If not, the function will
 #' cause a test failure.
@@ -228,7 +247,7 @@ called_once_with <- function(method.name, ...) {
 
 has_method <- function(mock, method.name) {
 	method.name <- remove_classname(method.name, mock)
-	methods <- ls(mock$method.returns)
+	methods <- ls(mock@methods)
 	return(method.name %in% methods)
 }
 
@@ -243,7 +262,7 @@ remove_classname <- function(method, mock) {
 }
 
 mock_calls <- function(mock, method) {
-	return(mock$call.results[[method]])
+	return(mock@call.results[[method]])
 }
 
 mock_arguments <- function(mock, method, instance) {
@@ -255,16 +274,28 @@ mock_arguments <- function(mock, method, instance) {
 
 
 #' The function for recording activity on the mock
+#' 
+#' This utility function creates the function which will form the basis of the \code{Mock}
+#' method assigned as part of the \code{mockMethod} usage.
+#' The body of this function is assigned to the method, and used to record the method and
+#' arguments when called on the \code{Mock} it is assigned to.
+#' When a method is called on a \code{Mock} the name of the method is first checked to 
+#' see if it is registered for this particular mock object. if not an error is raised. If
+#' yes, then the arguments passed in the call are stored in the \code{Mock}s call.results
+#' environment for later checking in a list named after the method.
+#' Finally any return value stored with the \code{Mock} is returned.
 create_mock_call <- function(mock) {
 	
 	mock_call <- function(mock, ...) {
 		call <- as.list(match.call())
 		call.name <- as.character(call[[1]])
+		call.args <- lapply(call, eval, env = parent.frame())
+		mock.idx <- which(sapply(call.args, function(arg) is(arg, "Mock")))
+		mock <- call.args[[mock.idx]]
 		if (!has_method(mock, call.name)) {
 			stop(paste("Unexpected method call '", call.name, "'", sep = ""))
 		}
-		call.args <- lapply(call[-1], eval, env = parent.frame())
-		add_call_results(mock, call.name, call.args)
+		add_call_results(mock, call.name, call.args[-mock.idx])
 		return(method_value(mock, call.name))
 	}	
 	return(mock_call)
@@ -274,25 +305,18 @@ add_call_results <- function(mock, method, arguments) {
 	method <- remove_classname(method, mock)
 	existing.calls <- mock_calls(mock, method)
 	if (length(existing.calls)) {
-		mock$call.results[[method]] <- c(list(existing.calls), list(arguments))
+		mock@call.results[[method]] <- c(list(existing.calls), list(arguments))
 	} else {
-		mock$call.results[[method]] <- list(arguments)
+		mock@call.results[[method]] <- list(arguments)
 	}
 }
 
 method_value <- function(mock, method.name) {
 	method.name <- remove_classname(method.name, mock)
-	return(mock$method.returns[[method.name]])
+	return(mock@methods[[method.name]])
 }
 
-#' Utility function for removing mock methods - does not remove generics
-cleanMethods <- function(methods) {
-	
-	for (method in methods) {
-		method.env <- get_env_containing(method)
-		rm(list = as.character(methods(method)), envir = method.env)
-	}
-}
+
 
 
 

@@ -53,18 +53,36 @@
   
   ** Find a good explanation of mock objects in a web page **
   
-  The unit tests for this package will also hopefully help to demonstrate the
-  usage of \emph{mockR}.
+  Interested readers might also want to check out the unit tests for
+  \emph{mockR} as demonstrations of the functionality being modeled.
 
 
 \section{Making mock objects}
 
   Intro
   
-  A bit about the mock internals
+  The \texttt{Mock} object is an S4 object with two main slots:
+  \begin{itemize}
+    \item \texttt{call.results}
+    An environment to record calls that are made on the \texttt{Mock}.
+    \item \texttt{methods}
+    An environment containing the methods which have been registered to the
+    \texttt{Mock} along with any return values specified by the user.
+  \end{itemize}
   
-  Creating a basic mock
-  Creating a mock with a specification - show assignment to an S4 object.
+  The reason for setting the call.results slot as an environment is to eliminate
+  the need to return the \texttt{Mock} from the method to capture the results. In
+  this way the method can return something else entirely, but the call.records
+  can still be captured in the mutable call.results environment.
+  
+  The reason for using an environment for the methods slot is more one of
+  convenience rather than necessity. This allows multiple mock objects to be
+  assigned methods with one call the \texttt{mockMethod} without having to return
+  them as a list or similar.
+  
+  A mock object can be created simply by calling \texttt{Mock()}, and will be
+  ready for service.
+
 
 <<echo=FALSE>>=
 	library(devtools)
@@ -75,49 +93,116 @@
 			representation(
 				child = "list"
 			))
-	
 @
 
+<<>>=
+	mock <- Mock()
+	str(mock)
+@
+
+  \texttt{Mock} objects by themselves are not particularly interesting. They get a
+  little more interesting when given the name of another class to imitate.
 
 <<>>=
 	s4.object <- new("MyS4object")
 	getSlots("MyS4object")
-	# note that slot 'child' only accepts objects with class 'list'
-	message <- try(s4.object@child <- Mock())
-	class(message)
+@
+<<eval=FALSE>>=
+	s4.object@child <- Mock()
+@
+<<echo=FALSE>>=
+	child.error <- tryCatch(s4.object@child <- Mock(), error = function(e) e$message)
+	print(child.error)
+@
+<<>>=
 	s4.object@child <- Mock("list")
 @
 
+  So far we know a little about the \texttt{Mock} internals, how to create them,
+  and giving them a class to imitate. The really useful features of \texttt{Mock}s
+  comes into play when assigning them methods.
 
 
 \section{Making mock methods}
 
-  Intro
+  Making mock methods is really where \emph{mockR} and \texttt{Mock} objects come
+  in handy. In essence the mock method is one which has the same name and
+  signature of some method that already exists (or maybe is yet to be
+  developed) but has behaviour particularly suited to testing.
   
-  test cases:
-  Assigning and checking a single method call
+  In effect when a mock method is in play, it short circuits the normal
+  operations that would be conducted, and records what happened in that method
+  call on the mock object. This can be used to check that a particular method
+  was called on a mock, or throw an error if an undesired method was called. And
+  it can also be used to check that the right arguments were passed to the call.
+  Or it may just be useful to not have to build a bunch of objects just to
+  return a value needed for the test, the mock method can be set up to
+  automatically return a desired value when called.
+  
+  Most of the time the mock object will behave just like any other object in R.
+  It will give a result based on what the function does.
+  
+<<>>=
+	trySomething <- function(x) "I tried"
+	mock <- Mock()
+	trySomething(mock)
+@
+
+  If however we tell the mock that a particular method is special, through a
+  call to \texttt{mockMethod}, then the mock object will pay attention to the
+  call, and will be able to report on this information.
+  
 
 <<>>=
+	my_mock_method <- function(object) "Normal function"
 	test_function <- function(object) {
 		my_mock_method(object)
 	}
 	mock <- Mock()
 	mockMethod(mock, "my_mock_method")
-@
-<<results=hide>>=
 	test_function(mock)
+	test_function("argument")
 @
+
+  In the example above, we told the mock object that the function
+  \texttt{my\_mock\_method} was to be turned into a mock method. In doing
+  so, any calls to \texttt{my\_mock\_method} will use a special version if the
+  first argument is a mock object, otherwise they will still act like the normal
+  function or method.
+  
+  During the setup of the mock method, within the call to \texttt{mockMethod}, the
+  name of the method is assigned to the mock object. This becomes a
+  ``registered'' method for that mock.
+  
+  If we try and call this method on a mock for which it is not registered, it
+  will generate an error.
+  
+<<>>=
+	mock2 <- Mock()
+@
+
+<<echo=FALSE>>=
+	register.error <- tryCatch(my_mock_method(mock2), 
+			error = function(e) e$message)
+@
+<<eval=FALSE>>=
+	my_mock_method(mock2)
+@
+<<echo=FALSE>>=
+	print(register.error)
+@
+  
+  When a registered method is called on the mock it will record the activity
+  and allow this to be checked later with the \emph{mockR} utility function 
+  \texttt{called\_once} from within \texttt{expect\_that}.
+
 <<>>=
 	# Typical usage is like this:
 	expect_that(mock, called_once("my_mock_method"))
 	# But doesn't show output here, so we'll be calling like so
 	# from now on:
 	called_once("my_mock_method")(mock)
-@
-<<results=hide>>=
 	test_function(mock)
-@
-<<>>=
 	called_once("my_mock_method")(mock)
 	
 @
@@ -128,8 +213,10 @@
   Assigning a method call with a return value
   
 <<>>=
+	method_return <- function(arg) "Normal"
 	mock <- Mock()
-	mockMethod(mock, "method_return", return.value = "mocked!")
+	method_return(mock)
+	mockMethod(mock, "method_return", return.value = "Mocked!")
 	method_return(mock)
 	called_once("method_return")(mock)
 @
@@ -167,22 +254,6 @@
 	mock_method(mock1)
 	called_once("mock_method")(mock1)
 	called_once("mock_method")(mock2)
-@
-
-  Calling an unregistered method on a mock
-
-<<>>=
-	mock1 <- Mock()
-	mock2 <- Mock()
-	mockMethod(mock1, "mock1_only", return.value = "OK")
-	mock1_only(mock1)
-@
-<<eval=FALSE>>=
-	mock1_only(mock2)
-@
-<<echo=FALSE>>=
-	error <- try(mock1_only(mock2))
-	attributes(error)$condition$message
 @
 
 

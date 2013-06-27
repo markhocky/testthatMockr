@@ -11,8 +11,8 @@ context("Class imitation")
 				test.fun <- function() NULL
 				fun.mock <- Mock(test.fun)
 				
-				expect_that(class(list.mock), matchesObject(c("list", "mock")))
-				expect_that(list.mock, is_a("list"))
+				expect_that(class(list.mock), matchesObject("Mock"))
+				expect_that(is(list.mock, "list"), is_true())
 				expect_that(fun.mock, is_a("function"))
 			})
 	
@@ -57,6 +57,15 @@ context("Method creation")
 				expect_that(mock, called_once("TestMethod_2"))
 			})
 	
+	test_that("Mock method created when mock has spec", {
+				
+				mock <- Mock("list")
+				mockMethod(mock, "TestMethod_3", return.value = 3)
+				TestMethod_3(mock)
+				
+				expect_that(mock, called_once("TestMethod_3"))
+			})
+	
 	test_that("Mock method created when existing S4 generic", {
 				
 				mock <- Mock()
@@ -69,11 +78,14 @@ context("Method creation")
 	test_that("Mock method overrides existing S4 method", {
 				
 				mock <- Mock("testS4")
-				mockMethod(mock, "TestS4method", return.value = "PASS")
-				result <- TestS4method(mock)
 				
+				result.before.mock <- TestS4method(mock)
+				mockMethod(mock, "TestS4method", return.value = "PASS")
+				result.after.mock <- TestS4method(mock)
+				
+				expect_that(result.before.mock, equals("S4 method"))
 				expect_that(mock, called_once("TestS4method"))
-				expect_that(result, equals("PASS"))
+				expect_that(result.after.mock, equals("PASS"))
 			})
 	
 context("Mock method reporting")	
