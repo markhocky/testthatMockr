@@ -12,12 +12,21 @@ expected_vs_actual <- function(expected, actual, ignore.attributes = TRUE) {
 		attributes(expected) <- NULL
 		attributes(actual) <- NULL
 	}
-	actual.str <- paste(capture.output(print(actual)), collapse = "\n")
-	expected.str <- paste(capture.output(print(expected)), collapse = "\n")
+	actual.str <- paste(print_object(actual), collapse = "\n")
+	expected.str <- paste(print_object(expected), collapse = "\n")
 	expectation(
 			identical(actual, expected),
 			paste("\nExpected:", expected.str, "But got:", actual.str, sep = "\n"))
 }
+
+print_object <- function(object) {
+	
+	output <- tryCatch(capture.output(str(object)), 
+			error = function(e) capture.output(print(object)))
+	return(output)
+}
+
+
 
 
 setClass("testS4",

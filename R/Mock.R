@@ -36,6 +36,15 @@ Mock <- function(spec = NULL) {
 			as.character(spec)
 		}
 	}
+	if (!any(grepl("mock_methods", search()))) {
+		attach(NULL, pos = 2L, name = "mock_methods")
+	} else {
+		mock.methods.pos <- grep("mock_methods", search())
+		if (mock.methods.pos != 2) {
+			mock.methods.env <- detach("mock_methods")
+			attach(mock.methods.env, pos = 2L, name = "mock_methods")
+		}
+	}
 	setClass("Mock",
 			representation(
 					call.results = "environment", 
@@ -133,7 +142,7 @@ is_function_but_notS4 <- function(method) {
 make_S4_generic <- function(method.name) {
 	generic <- paste0("function(mock, ...) standardGeneric(\"", method.name, "\")")
 	generic <- parse(text = generic)
-	setGeneric(method.name, eval(generic), where = "package:mockR")
+	setGeneric(method.name, eval(generic), where = "mock_methods")
 	return(get(method.name))
 }
 
@@ -144,9 +153,9 @@ make_S3andS4_generics <- function(method.name, mock, method) {
 	if (!is_S3generic(method)) {
 		setAs_S3generic(method.name, method)
 	}
-	setGeneric(method.name, method, where = "package:mockR")
+	setGeneric(method.name, method, where = "mock_methods")
 	assign(paste0(method.name, ".Mock"), create_mock_call(mock), 
-			pos = grep("mockR", search()))
+			pos = "mock_methods")
 }
 
 is_S3generic <- function(method) {
@@ -174,7 +183,8 @@ assign_S4_method <- function(mock, method, method.name, return.value) {
 	formals(mock.method) <- formals(method)
 	setMethod(method.name,
 			signature("Mock"),
-			mock.method)
+			mock.method, 
+			where = "mock_methods")
 	assign_method_to(mock, method.name, return.value)
 }
 
@@ -212,7 +222,7 @@ called_once <- function(method.name) {
 	function(actual) {
 		number.of.calls <- length(mock_calls(actual, method.name))
 		expectation(number.of.calls == 1, 
-				paste("Expected one call, was called", number.of.calls, "times"))
+				paste("expected one call, was called", number.of.calls, "times"))
 	}
 }
 
@@ -243,7 +253,7 @@ called_once_with <- function(method.name, ...) {
 		expected.args <- list(...)
 		actual.args <- mock_calls(actual, method.name)
 		if (length(actual.args) != 1) {
-			expectation(FALSE, paste("Was called ", length(actual.args), "times"))
+			expectation(FALSE, paste("was called ", length(actual.args), "times"))
 		} else {
 			actual.args <- mock_arguments(actual, method.name, 1)
 			expected_vs_actual(expected.args, actual.args, ignore.attributes = TRUE)
