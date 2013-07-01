@@ -4,7 +4,6 @@
 #' provide functionality to record operations performed on it. The \code{Mock} can be 
 #' used as a stub for an object yet to be developed, or it can be used to mimic an 
 #' existing object.
-#' 
 #' The \code{Mock} can be provided with the name of a class to mimic via the \code{spec}
 #' parameter. In this case the Mock will be assigned this class, which is particularly 
 #' useful if the \code{Mock} is to be used in the slot of another S4 object.
@@ -73,10 +72,9 @@ Mock <- function(spec = NULL) {
 #' the \code{Mock}, and different \code{return.value}s can be assigned to different 
 #' \code{Mock} objects.
 #' 
-#' #' At this stage of development, only methods which take the \code{Mock} as their first
+#' At this stage of development, only methods which take the \code{Mock} as their first
 #' argument can be imitated.
 #' 
-#' @details 
 #' The \code{mockMethod} function will attempt to create a method / function specific
 #' to the mock without hurting any existing functions.
 #' If there are no existing functions of name \code{method.name}, then an S4 method 
@@ -99,8 +97,7 @@ Mock <- function(spec = NULL) {
 #' @examples
 #' mockMethod(mock, "TestMethod") # returns NULL
 #' mockMethod(mock, "TestMethod", return.value = 1) # returns 1
-#' mockMethod(list(mock1, mock2), "TestMethod") # assigns "TestMethod" to both mock1 and 
-#' mock2 
+#' mockMethod(list(mock1, mock2), "TestMethod") # assigns "TestMethod" for mock1 and mock2 
 #' 
 #' @return Returns NULL, but called for it's side effect of setting up the mock methods.
 #' 
