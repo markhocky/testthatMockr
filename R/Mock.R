@@ -258,6 +258,27 @@ called_once_with <- function(method.name, ...) {
 	}
 }
 
+#' Asserts method was not called
+#' 
+#' When called within \code{expect_that} this function returns a passing result when
+#' the named method was not called on the mock object. The method need not have been
+#' assigned to the mock before testing.
+#' 
+#' @param method.name character string naming the method to check
+#' 
+#' @seealso \code{\link{called_once}}
+#' 
+#' @export 
+not_called <- function(method.name) {
+	
+	function(actual) {
+		number.of.calls <- length(mock_calls(actual, method.name))
+		expectation(number.of.calls == 0, 
+				paste("expected no calls, was called", number.of.calls, "times"))
+	}
+}
+
+
 has_method <- function(mock, method.name) {
 	method.name <- remove_classname(method.name, mock)
 	methods <- ls(mock@methods)

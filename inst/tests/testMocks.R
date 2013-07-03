@@ -102,8 +102,10 @@ context("Mock method reporting")
 				
 				mock <- Mock()
 				mockMethod(mock, "TestMethod")
+				mockMethod(mock, "TestMethod_2")
 				TestMethod(mock)
 				expect_that(mock, called_once("TestMethod"))
+				expect_that(mock, not_called("TestMethod_2"))
 			})
 	
 	test_that("Multiple calls fails called once test", {

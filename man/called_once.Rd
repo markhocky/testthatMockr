@@ -10,7 +10,7 @@
 }
 \description{
   The \code{called_once} function is designed to be called
-  from within \code{testthat}s \code{expect_that}
+  from within \code{test_that}s \code{expect_that}
   assertion. This checks the call records of the
   \code{Mock} to confirm that the method was called once,
   and only once. If not, the function will cause a test
