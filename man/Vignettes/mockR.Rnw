@@ -140,7 +140,15 @@
   automatically return a desired value when called.
   
   Most of the time the mock object will behave just like any other object in R.
-  It will give a result based on what the function does.
+  It will give a result based on what the function does. 
+  
+  Note that if the mock object is given a specification it becomes a sub-class
+  of that specification. This means that it will have all the slots of the
+  specification class, and more importantly all the existing methods (that you
+  don't want to replace with mock methods) will, or should, behave as normal.
+  This means that the mock can be trusted to imitate the behaviour of the
+  specification class except for the specific methods which want to be
+  controlled (i.e. the mock methods).
   
 <<>>=
 	trySomething <- function(x) "I tried"

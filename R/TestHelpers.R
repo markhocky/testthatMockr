@@ -1,6 +1,5 @@
+#' Checks expected and actual objects are matching
 #'
-#'
-
 matchesObject <- function(expected, ignore.attributes = TRUE) {
 	function(actual) {
 		expected_vs_actual(expected, actual, ignore.attributes)
@@ -14,8 +13,10 @@ expected_vs_actual <- function(expected, actual, ignore.attributes = TRUE) {
 	}
 	actual.str <- paste(print_object(actual), collapse = "\n")
 	expected.str <- paste(print_object(expected), collapse = "\n")
-	expectation(
-			identical(actual, expected),
+	comparison <- tryCatch(
+			all.equal(actual, expected),
+			error = function(e) identical(actual, expected))
+	expectation(isTRUE(comparison),
 			paste("\nExpected:", expected.str, "But got:", actual.str, sep = "\n"))
 }
 
@@ -25,8 +26,6 @@ print_object <- function(object) {
 			error = function(e) capture.output(print(object)))
 	return(output)
 }
-
-
 
 
 setClass("testS4",
@@ -52,3 +51,4 @@ setMethod("TestS4method",
 		function(x) {
 			return("S4 method")
 		})
+
