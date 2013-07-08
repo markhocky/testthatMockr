@@ -11,20 +11,24 @@ expected_vs_actual <- function(expected, actual, ignore.attributes = TRUE) {
 		attributes(expected) <- NULL
 		attributes(actual) <- NULL
 	}
-	actual.str <- paste(print_object(actual), collapse = "\n")
-	expected.str <- paste(print_object(expected), collapse = "\n")
 	comparison <- tryCatch(
 			all.equal(actual, expected),
 			error = function(e) identical(actual, expected))
 	expectation(isTRUE(comparison),
-			paste("\nExpected:", expected.str, "But got:", actual.str, sep = "\n"))
+			print_comparison(expected, actual))
 }
+
+print_comparison <- function(expected, actual) {
+	paste("\nExpected:", print_object(expected), 
+			"But got:", print_object(actual), sep = "\n")
+}
+	
 
 print_object <- function(object) {
 	
 	output <- tryCatch(capture.output(str(object)), 
 			error = function(e) capture.output(print(object)))
-	return(output)
+	return(paste(output, collapse = "\n"))
 }
 
 

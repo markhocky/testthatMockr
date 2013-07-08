@@ -98,14 +98,34 @@ context("Method creation")
 	
 context("Mock method reporting")	
 
+	test_that("Mock reports on method not called", {
+				
+				mock <- Mock()
+				expect_that(mock, not_called("TestMethod"))
+			})
+
 	test_that("Mock reports on method call", {
 				
 				mock <- Mock()
 				mockMethod(mock, "TestMethod")
 				mockMethod(mock, "TestMethod_2")
 				TestMethod(mock)
+				
 				expect_that(mock, called_once("TestMethod"))
 				expect_that(mock, not_called("TestMethod_2"))
+				expect_that(mock, not_called("NoMethod"))
+			})
+	
+	test_that("Mock reports on method call if other calls first", {
+				
+				mock <- Mock()
+				mockMethod(mock, "TestMethod")
+				mockMethod(mock, "TestMethod_2")
+				TestMethod(mock)
+				TestMethod(mock)
+				TestMethod_2(mock)
+				
+				expect_that(mock, called_once("TestMethod_2"))
 			})
 	
 	test_that("Multiple calls fails called once test", {
@@ -146,6 +166,86 @@ context("Mock method reporting")
 				expect_that(mock, called_once("TestMethod"))
 				expect_that(returned, equals(return.value))
 			})
+
+context("Checking call sequences")
+	
+	test_that("Call sequence returned by Mock for checking", {
+				
+				mock <- Mock()
+				mockMethod(mock, "method1")
+				mockMethod(mock, "method2")
+				
+				arg1 <- 1
+				arg2 <- 2
+				
+				method1(mock, arg1)
+				method1(mock, arg2)
+				method2(mock, arg1, arg2)
+				
+				expect_that(mock, calls_made(
+								method1(mock, arg1), 
+								method1(mock, arg2), 
+								method2(mock, arg1, arg2)))
+			})
+	
+	test_that("Call sequence checked with list argument", {
+				
+				# Note that call results are stored in a list before checking, so if an
+				# argument is also a list, it could cause issues.
+				mock <- Mock()
+				mockMethod(mock, "method1")
+				mockMethod(mock, "method2")
+				
+				arg1 <- 1
+				
+				method1(mock, arg1)
+				method1(mock, list(arg1))
+				
+				expect_that(mock, calls_made(
+								method1(mock, 1), 
+								method1(mock, list(1))))
+			})
+	
+	test_that("Call test fails if wrong methods called", {
+				
+				mock <- Mock()
+				mockMethod(mock, "method1")
+				
+				method1(mock, 1)
+				
+				expect_that(calls_made(
+								method1(mock, 1), 
+								method1(mock, 2))(mock)$passed, is_false())
+			})
+	
+	test_that("Call test fails if wrong arguments", {
+				
+				mock <- Mock()
+				mockMethod(mock, "method1")
+				
+				method1(mock, 1)
+				method1(mock, 2)
+				
+				expect_that(calls_made(
+								method1(mock, 1), 
+								method1(mock, 3))(mock)$passed, is_false())
+			})
+	
+	test_that("Call records tested when called within other function", {
+				
+				mock <- Mock()
+				mockMethod(mock, "TestS4Method")
+				
+				test_function <- function(mock, arg) {
+					TestS4Method(mock, arg)
+				}
+				
+				test.arg <- 1
+				test_function(mock, test.arg)
+				
+				expect_that(mock, calls_made(TestS4Method(mock, test.arg)))
+			})
+	
 
 context("Assigning mock methods")
 	

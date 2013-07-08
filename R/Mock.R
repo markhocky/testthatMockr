@@ -46,12 +46,12 @@ Mock <- function(spec = NULL) {
 	}
 	setClass("Mock",
 			representation(
-					call.results = "environment", 
-					methods = "environment"
+					methods = "environment", 
+					calls = "environment"
 			), contains = spec)
 	mock <- new("Mock")
-	mock@call.results <- new.env(emptyenv())
 	mock@methods <- new.env(emptyenv())
+	mock@calls <- new.env(emptyenv())
 	return(mock)
 }
 
@@ -198,6 +198,62 @@ multiple_mock_method <- function(mock.list, method.name, return.value) {
 }
 
 
+#' The function for recording activity on the mock
+#' 
+#' This utility function creates the function which will form the basis of the \code{Mock}
+#' method assigned as part of the \code{mockMethod} usage.
+#' The body of this function is assigned to the method, and used to record the method and
+#' arguments when called on the \code{Mock} it is assigned to.
+#' When a method is called on a \code{Mock} the name of the method is first checked to 
+#' see if it is registered for this particular mock object. If not, an error is raised. If
+#' yes, then the arguments passed in the call are stored in the \code{Mock}s call.results
+#' environment for later checking in a list named after the method.
+#' Finally any return value stored with the \code{Mock} is returned.
+create_mock_call <- function(mock) {
+	
+	mock_call <- function(mock, ...) {
+		call <- as.list(match.call())
+		call.name <- as.character(call[[1]])
+		call.args <- lapply(call[-1], eval, env = parent.frame())
+		mock.idx <- which(sapply(call.args, function(arg) is(arg, "Mock")))
+		mock <- call.args[[mock.idx]]
+		if (!has_method(mock, call.name)) {
+			stop(paste("Unexpected method call '", call.name, "'", sep = ""))
+		}
+		add_call_results(mock, call.name, call.args[-mock.idx])
+		return(method_value(mock, call.name))
+	}	
+	return(mock_call)
+}
+
+add_call_results <- function(mock, method, arguments) {
+	method <- remove_classname(method, mock)
+	ID <- as.character(length(ls(mock@calls)) + 1)
+	mock.call <- c(list(as.name(method)), arguments)
+	assign(ID, as.call(mock.call), mock@calls)
+}
+
+method_value <- function(mock, method.name) {
+	method.name <- remove_classname(method.name, mock)
+	return(mock@methods[[method.name]])
+}
+
+has_method <- function(mock, method.name) {
+	method.name <- remove_classname(method.name, mock)
+	methods <- ls(mock@methods)
+	return(method.name %in% methods)
+}
+
+remove_classname <- function(method, mock) {
+	class.name <- paste0(".", class(mock)[1])
+	if (grepl(class.name, method)) {
+		return(substr(method, 1, regexpr(class.name, method) - 1))
+	} else {
+		return(method)
+	}
+}
+
+
 #' Assert that the named method was called once and only once.
 #' 
 #' The \code{called_once} function is designed to be called from within \code{test_that}s
@@ -217,10 +273,28 @@ multiple_mock_method <- function(mock.list, method.name, return.value) {
 #' @export 
 called_once <- function(method.name) {
 	function(actual) {
-		number.of.calls <- length(mock_calls(actual, method.name))
-		expectation(number.of.calls == 1, 
+		number.of.calls <- length(calls_to(actual, method.name))
+		expectation(isTRUE(number.of.calls == 1), 
 				paste("expected one call, was called", number.of.calls, "times"))
 	}
+}
+
+all_calls_on <- function(mock) {
+	calls <- as.list(mock@calls)
+	names(calls) <- method_names(calls)
+	return(calls)
+}
+
+method_names <- function(calls) {
+	method.names <- sapply(calls, function(call) as.character(call[1]))
+	attributes(method.names) <- NULL
+	return(method.names)
+}
+
+calls_to <- function(mock, method) {
+	call.list <- all_calls_on(mock)
+	method.calls <- call.list[names(call.list) == method]
+	return(method.calls)
 }
 
 
@@ -248,15 +322,92 @@ called_once_with <- function(method.name, ...) {
 	
 	function(actual) {
 		expected.args <- list(...)
-		actual.args <- mock_calls(actual, method.name)
-		if (length(actual.args) != 1) {
-			expectation(FALSE, paste("was called ", length(actual.args), "times"))
+		call.list <- calls_to(actual, method.name)
+		if (length(call.list) != 1) {
+			expectation(FALSE, paste("was called ", length(call.list), "times"))
 		} else {
-			actual.args <- mock_arguments(actual, method.name, 1)
-			expected_vs_actual(expected.args, actual.args, ignore.attributes = TRUE)
+			call.args <- call_args(call.list)[[1]]
+			expected_vs_actual(expected.args, call.args, ignore.attributes = TRUE)
 		}
 	}
 }
+
+call_args <- function(calls) {
+	clean_args <- function(call.args) {
+		call.args <- strip_mock(call.args)
+		attributes(call.args) <- NULL
+		# Note Conversion below required to change "pairlist" object to an ordinary list.
+		return(as.list(call.args))
+	}
+	call.args <- lapply(calls, function(call) clean_args(call[-1]))
+	names(call.args) <- method_names(calls)
+	return(call.args)
+}
+
+strip_mock <- function(call.args) {
+	if (is(call.args[[1]], "Mock")) {
+		call.args[[1]] <- NULL
+	}
+	return(call.args)
+}
+
+
+#' Asserts that a series of calls made with specified arguments
+#' 
+#' Calls made checks that the calls specified were made on the mock object. Note that
+#' the calls to check should be provided as comma separated arguments to the function.
+#' The test will first check to see that the method names specified exist in the mock
+#' call records, and if so will then check that the arguments for each call match those
+#' provided.
+#' If one of those conditions is not fullfilled, then the fail message is shown comparing
+#' the expected method calls with the actual method calls.
+#' Note that the mock object still needs to be included as the first argument of the 
+#' method calls to be checked for. Basically just write it in as if you were making the
+#' call again.
+#' 
+#' @param ... comma separated arguments of calls to check
+#' 
+#' @examples
+#' expect_that(mock, calls_made(myFun1(mock, arg1), myFun2(mock, arg2)))
+#' 
+calls_made <- function(...) {
+	test.calls <- as.list(match.call()[-1])
+	test.calls <- eval_args(test.calls, parent.frame())
+	names(test.calls) <- method_names(test.calls)
+	function(actual) {
+		mock.calls <- all_calls_on(actual)
+		comparison.result <- compare_calls(mock.calls, test.calls)
+		expectation(comparison.result$outcome, comparison.result$message)
+	}
+}
+
+eval_args <- function(test.calls, frame) {
+	for (i in seq_along(test.calls)) {
+		test.call.args <- test.calls[[i]][-1]
+		test.call.args <- lapply(test.call.args, eval, frame)
+		test.calls[[i]][-1] <- test.call.args
+	}
+	return(test.calls)
+}
+
+compare_calls <- function(actual.calls, expected.calls) {
+	
+	if (!all(names(expected.calls) %in% names(actual.calls))) {
+		list(outcome = FALSE, 
+				message = print_comparison(expected.methods, actual.methods))
+	}
+	
+	actual.args <- call_args(actual.calls)
+	expected.args <- call_args(expected.calls)
+	if (!all(expected.args %in% actual.args)) {
+		list(outcome = FALSE, message = print_comparison(expected.args, actual.args))
+	}
+	
+	else {
+		list(outcome = TRUE, message = "Passed")
+	}
+}
+
 
 #' Asserts method was not called
 #' 
@@ -272,91 +423,31 @@ called_once_with <- function(method.name, ...) {
 not_called <- function(method.name) {
 	
 	function(actual) {
-		number.of.calls <- length(mock_calls(actual, method.name))
-		expectation(number.of.calls == 0, 
-				paste("expected no calls, was called", number.of.calls, "times"))
+		not.called <- length(calls_to(actual, method.name)) == 0
+		expectation(isTRUE(not.called), 
+				paste("expected no calls, was called", not.called, "times"))
 	}
 }
 
 
-has_method <- function(mock, method.name) {
-	method.name <- remove_classname(method.name, mock)
-	methods <- ls(mock@methods)
-	return(method.name %in% methods)
-}
-
-
-remove_classname <- function(method, mock) {
-	class.name <- paste0(".", class(mock)[1])
-	if (grepl(class.name, method)) {
-		return(substr(method, 1, regexpr(class.name, method) - 1))
-	} else {
-		return(method)
-	}
-}
-
-mock_calls <- function(mock, method) {
-	return(mock@call.results[[method]])
-}
-
-mock_arguments <- function(mock, method, instance) {
-	calls <- mock_calls(mock, method)
-	called.arguments <- calls[[instance]][-1]
-	attributes(called.arguments) <- NULL
-	return(called.arguments)
-}
-
-
-#' The function for recording activity on the mock
+#' Retrieves a specified call argument from call record
 #' 
-#' This utility function creates the function which will form the basis of the \code{Mock}
-#' method assigned as part of the \code{mockMethod} usage.
-#' The body of this function is assigned to the method, and used to record the method and
-#' arguments when called on the \code{Mock} it is assigned to.
-#' When a method is called on a \code{Mock} the name of the method is first checked to 
-#' see if it is registered for this particular mock object. if not an error is raised. If
-#' yes, then the arguments passed in the call are stored in the \code{Mock}s call.results
-#' environment for later checking in a list named after the method.
-#' Finally any return value stored with the \code{Mock} is returned.
-create_mock_call <- function(mock) {
-	
-	mock_call <- function(mock, ...) {
-		call <- as.list(match.call())
-		call.name <- as.character(call[[1]])
-		call.args <- lapply(call, eval, env = parent.frame())
-		mock.idx <- which(sapply(call.args, function(arg) is(arg, "Mock")))
-		mock <- call.args[[mock.idx]]
-		if (!has_method(mock, call.name)) {
-			stop(paste("Unexpected method call '", call.name, "'", sep = ""))
-		}
-		add_call_results(mock, call.name, call.args[-mock.idx])
-		return(method_value(mock, call.name))
-	}	
-	return(mock_call)
+#' This function is provided if a mock object call records needs to be specifically 
+#' queried for testing of a value.
+#' This is particularly useful if an object is expected to be changed somewhere within
+#' the function calls, or if dealing with mutable values. In this way the mock can be
+#' used as a collection tool. The value of the parameter caught can then be tested 
+#' against expectations.
+#' 
+#' @param mock the mock object which is holding the call record
+#' @param method the name of the method which uses the argument
+#' @param arg.number the position number of where the argument is in the function call
+#' @param call.number which instance of the call is desired (defaults to 1)
+#'  
+get_call_argument <- function(mock, method, arg.number, call.number = 1) {
+	method.calls <- calls_to(mock, method)
+	return(call_args(method.calls)[[call.number]][[arg.number]])
 }
-
-add_call_results <- function(mock, method, arguments) {
-	method <- remove_classname(method, mock)
-	existing.calls <- mock_calls(mock, method)
-	if (length(existing.calls)) {
-		mock@call.results[[method]] <- c(list(existing.calls), list(arguments))
-	} else {
-		mock@call.results[[method]] <- list(arguments)
-	}
-}
-
-method_value <- function(mock, method.name) {
-	method.name <- remove_classname(method.name, mock)
-	return(mock@methods[[method.name]])
-}
-
-
-
-
-
-
-
-
 
 
 
