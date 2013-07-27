@@ -3,6 +3,8 @@
 
 context("__ Mocks __")
 
+cleanMockMethods()
+
 context("Class imitation")
 
 	test_that("Mock mimicks specified class", {
@@ -182,7 +184,7 @@ context("Checking call sequences")
 				method1(mock, arg2)
 				method2(mock, arg1, arg2)
 				
-				expect_that(mock, calls_made(
+				expect_that(mock, has_calls(
 								method1(mock, arg1), 
 								method1(mock, arg2), 
 								method2(mock, arg1, arg2)))
@@ -201,7 +203,7 @@ context("Checking call sequences")
 				method1(mock, arg1)
 				method1(mock, list(arg1))
 				
-				expect_that(mock, calls_made(
+				expect_that(mock, has_calls(
 								method1(mock, 1), 
 								method1(mock, list(1))))
 			})
@@ -213,7 +215,7 @@ context("Checking call sequences")
 				
 				method1(mock, 1)
 				
-				expect_that(calls_made(
+				expect_that(has_calls(
 								method1(mock, 1), 
 								method1(mock, 2))(mock)$passed, is_false())
 			})
@@ -226,7 +228,7 @@ context("Checking call sequences")
 				method1(mock, 1)
 				method1(mock, 2)
 				
-				expect_that(calls_made(
+				expect_that(has_calls(
 								method1(mock, 1), 
 								method1(mock, 3))(mock)$passed, is_false())
 			})
@@ -234,16 +236,30 @@ context("Checking call sequences")
 	test_that("Call records tested when called within other function", {
 				
 				mock <- Mock()
-				mockMethod(mock, "TestS4Method")
+				mockMethod(mock, "TestS4method")
 				
 				test_function <- function(mock, arg) {
-					TestS4Method(mock, arg)
+					TestS4method(mock, arg)
 				}
 				
 				test.arg <- 1
 				test_function(mock, test.arg)
 				
-				expect_that(mock, calls_made(TestS4Method(mock, test.arg)))
+				expect_that(mock, has_calls(TestS4method(mock, test.arg)))
+			})
+	
+	test_that("Call records with named arguments", {
+				
+				mock <- Mock()
+				mockMethod(mock, "method1")
+				
+				test_function <- function(mock, arg) {
+					method1(mock = mock, arg = arg)
+				}
+				
+				test_function(mock, arg = 1)
+				
+				expect_that(mock, has_calls(method1(mock, arg = 1)))
 			})
 	
 
@@ -300,7 +316,22 @@ context("Assigning mock methods")
 				expect_that(mock2, called_once("Testing"))
 			})
 	
+context("Removing mock methods")
 	
+	test_that("Function returned to normal after cleaning", {
+				
+				mock <- Mock()
+				mockMethod(mock, "TestFunction")
+				cleanMockMethods()
+				
+				holder <- list(c(1, 2), c(2, 3))
+				
+				sapplyTo <- function(x) sapply(x, TestFunction)
+				
+				expect_that(TestFunction(holder[[1]]), equals(3))
+				expect_that(TestFunction(holder[[2]]), equals(5))
+				expect_that(sapplyTo(holder), equals(c(3, 5)))
+			})
 	
 	
 	

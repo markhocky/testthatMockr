@@ -1,5 +1,6 @@
 export(Mock)
 export(called_once)
 export(called_once_with)
+export(matchesObject)
 export(mockMethod)
 export(not_called)

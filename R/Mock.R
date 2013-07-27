@@ -12,10 +12,13 @@
 #' 
 #' @details 
 #' The \code{Mock} contains two slots:
-#' \item{call.results}{an environment used to store calls made on the \code{Mock} along 
-#' with any arguments passed in as part of that call.}
-#' \item{methods}{an environment containing the names of methods registered for the 
-#' \code{Mock} along with the optional values to be returned from the call}
+#' 
+#' \code{calls} an environment used to store calls made on the \code{Mock} along 
+#' with any arguments passed in as part of that call.
+#' 
+#' \code{methods} an environment containing the names of methods registered for the 
+#' \code{Mock} along with the optional values to be returned from the call
+#' 
 #' These slots are not intended to be used directly, but rather are the containers used
 #' by the \code{Mock}s methods, and for testing. 
 #' 
@@ -23,7 +26,7 @@
 #' 
 #' @param spec a character string naming the class to be imitated.
 #' 
-#' @seealso \link{mockMethod}
+#' @seealso \code{mockMethod}
 #' 
 #' @export 
 Mock <- function(spec = NULL) {
@@ -37,6 +40,8 @@ Mock <- function(spec = NULL) {
 	}
 	if (!any(grepl("mock_methods", search()))) {
 		attach(NULL, pos = 2L, name = "mock_methods")
+		# Intialise character vector for recording S3 generics which are created.
+		assign("new_S3_generics", character(0), pos = "mock_methods")
 	} else {
 		mock.methods.pos <- grep("mock_methods", search())
 		if (mock.methods.pos != 2) {
@@ -62,7 +67,7 @@ Mock <- function(spec = NULL) {
 #' a specific "mock method". The associated \code{Mock} will make note of calls made to 
 #' this method along with any arguments and record these for future reporting.
 #' The method is assigned to a particular \code{Mock} so calls of this method on another
-#' \code{Mock} object will throw and error.
+#' \code{Mock} object will throw an error.
 #' 
 #' The same method can be applied to multiple \code{Mock} objects by passing in a list of
 #' \code{Mock}s as the first parameter. This is effectively the same as calling the 
@@ -93,11 +98,18 @@ Mock <- function(spec = NULL) {
 #' non-exported function from a package. In these cases, a call to \link{unlockBinding} 
 #' on the existing function prior to setting the mock method may work. This is 
 #' potentially something to be included in future versions of \code{mockR}.
+#' When an existing function is turned into a generic, the name of the method is also 
+#' recorded in the \code{new_S3_generics} character vector (stored in \code{mock_methods})
+#' so that it can be removed safely (i.e. on call to \code{cleanMockMethods}.
 #' 
 #' @examples
+#' \dontrun{
+#' mock <- Mock()
+#' mock2 <- Mock()
 #' mockMethod(mock, "TestMethod") # returns NULL
 #' mockMethod(mock, "TestMethod", return.value = 1) # returns 1
-#' mockMethod(list(mock1, mock2), "TestMethod") # assigns "TestMethod" for mock1 and mock2 
+#' mockMethod(list(mock, mock2), "TestMethod") # assigns "TestMethod" for mock and mock2
+#' } 
 #' 
 #' @return Returns NULL, but called for it's side effect of setting up the mock methods.
 #' 
@@ -107,7 +119,7 @@ Mock <- function(spec = NULL) {
 #' @param return.value The (optional) value to be returned from future calls to 
 #' \code{method.name}. Defaults to NULL.
 #' 
-#' @seealso \code{\link{Mock}}
+#' @seealso \code{\link{Mock}} \code{cleanMockMethods}
 #' 
 #' @export
 mockMethod <- function(mock, method.name, return.value = NULL) {
@@ -123,6 +135,7 @@ mockMethod <- function(mock, method.name, return.value = NULL) {
 		}
 		if (is_function_but_notS4(method)) {
 			make_S3andS4_generics(method.name, mock, method)
+			assign_S3_method(method.name, mock)
 		}
 		assign_S4_method(mock, method, method.name, return.value)
 	}
@@ -151,6 +164,9 @@ make_S3andS4_generics <- function(method.name, mock, method) {
 		setAs_S3generic(method.name, method)
 	}
 	setGeneric(method.name, method, where = "mock_methods")
+}
+
+assign_S3_method <- function(method.name, mock) {
 	assign(paste0(method.name, ".Mock"), create_mock_call(mock), 
 			pos = "mock_methods")
 }
@@ -164,6 +180,8 @@ setAs_S3generic <- function(method.name, method) {
 	body(generic) <- parse(text = paste0("UseMethod(\"", method.name, "\")"))
 	assign(method.name, generic, pos = environment(method))
 	assign(paste0(method.name, ".default"), method, pos = environment(method))
+	newS3generics <- get("new_S3_generics", pos = "mock_methods")
+	assign("new_S3_generics", c(newS3generics, method.name), pos = "mock_methods")
 }
 
 no_dots_args <- function(method) {
@@ -209,6 +227,9 @@ multiple_mock_method <- function(mock.list, method.name, return.value) {
 #' yes, then the arguments passed in the call are stored in the \code{Mock}s call.results
 #' environment for later checking in a list named after the method.
 #' Finally any return value stored with the \code{Mock} is returned.
+#' 
+#' @param mock the mock object to which the method is assigned
+#' 
 create_mock_call <- function(mock) {
 	
 	mock_call <- function(mock, ...) {
@@ -220,7 +241,7 @@ create_mock_call <- function(mock) {
 		if (!has_method(mock, call.name)) {
 			stop(paste("Unexpected method call '", call.name, "'", sep = ""))
 		}
-		add_call_results(mock, call.name, call.args[-mock.idx])
+		add_call_results(mock, call.name, call.args)
 		return(method_value(mock, call.name))
 	}	
 	return(mock_call)
@@ -264,11 +285,18 @@ remove_classname <- function(method, mock) {
 #' Note that the method being checked must have first been assigned to the \code{Mock} 
 #' with a call to \code{\link{mockMethod}}.
 #' 
-#' @usage expect_that(mock, called_once("TestMethod"))
-#' 
 #' @param method.name character string identifying the method of interest.
 #' 
 #' @seealso \code{\link{called_once_with}}, \code{\link{mockMethod}} 
+#' 
+#' @family assertions
+#' 
+#' @examples
+#' \dontrun{
+#' mock <- Mock()
+#' mockMethod(mock, "TestMethod")
+#' expect_that(mock, called_once("TestMethod"))
+#' }
 #' 
 #' @export 
 called_once <- function(method.name) {
@@ -293,8 +321,7 @@ method_names <- function(calls) {
 
 calls_to <- function(mock, method) {
 	call.list <- all_calls_on(mock)
-	method.calls <- call.list[names(call.list) == method]
-	return(method.calls)
+	return(call.list[names(call.list) == method])
 }
 
 
@@ -314,8 +341,15 @@ calls_to <- function(mock, method) {
 #' 
 #' @seealso \code{\link{called_once_with}}, \code{\link{mockMethod}} 
 #' 
+#' @family assertions
+#' 
 #' @examples
-#' expect_that(mock, called_once_with("TestMethod", arg1, arg2))
+#' \dontrun{
+#' mock <- Mock()
+#' mockMethod(mock, "TestMethod")
+#' TestMethod(mock, 1, 2)
+#' expect_that(mock, called_once_with("TestMethod", 1, 2))
+#' }
 #' 
 #' @export
 called_once_with <- function(method.name, ...) {
@@ -326,8 +360,8 @@ called_once_with <- function(method.name, ...) {
 		if (length(call.list) != 1) {
 			expectation(FALSE, paste("was called ", length(call.list), "times"))
 		} else {
-			call.args <- call_args(call.list)[[1]]
-			expected_vs_actual(expected.args, call.args, ignore.attributes = TRUE)
+			actual.args <- call_args(call.list)[[1]]
+			expected_vs_actual(expected.args, actual.args, ignore.attributes = TRUE)
 		}
 	}
 }
@@ -335,7 +369,6 @@ called_once_with <- function(method.name, ...) {
 call_args <- function(calls) {
 	clean_args <- function(call.args) {
 		call.args <- strip_mock(call.args)
-		attributes(call.args) <- NULL
 		# Note Conversion below required to change "pairlist" object to an ordinary list.
 		return(as.list(call.args))
 	}
@@ -367,10 +400,21 @@ strip_mock <- function(call.args) {
 #' 
 #' @param ... comma separated arguments of calls to check
 #' 
-#' @examples
-#' expect_that(mock, calls_made(myFun1(mock, arg1), myFun2(mock, arg2)))
+#' @family assertions
 #' 
-calls_made <- function(...) {
+#' @examples
+#' \dontrun{
+#' mock <- Mock()
+#' mockMethod(mock, "myFun1")
+#' mockMethod(mock, "myFun2")
+#' arg1 <- 100
+#' arg2 <- "yes"
+#' myFun1(mock, 100)
+#' myFun2(mock, "yes")
+#' expect_that(mock, has_calls(myFun1(mock, arg1), myFun2(mock, arg2)))
+#' }
+#' 
+has_calls <- function(...) {
 	test.calls <- as.list(match.call()[-1])
 	test.calls <- eval_args(test.calls, parent.frame())
 	names(test.calls) <- method_names(test.calls)
@@ -394,7 +438,7 @@ compare_calls <- function(actual.calls, expected.calls) {
 	
 	if (!all(names(expected.calls) %in% names(actual.calls))) {
 		list(outcome = FALSE, 
-				message = print_comparison(expected.methods, actual.methods))
+				message = print_comparison(names(expected.calls), names(actual.calls)))
 	}
 	
 	actual.args <- call_args(actual.calls)
@@ -419,13 +463,15 @@ compare_calls <- function(actual.calls, expected.calls) {
 #' 
 #' @seealso \code{\link{called_once}}
 #' 
+#' @family assertions
+#' 
 #' @export 
 not_called <- function(method.name) {
 	
 	function(actual) {
-		not.called <- length(calls_to(actual, method.name)) == 0
-		expectation(isTRUE(not.called), 
-				paste("expected no calls, was called", not.called, "times"))
+		num.calls <- length(calls_to(actual, method.name))
+		expectation(isTRUE(num.calls == 0), 
+				paste("expected no calls, was called", num.calls, "times"))
 	}
 }
 
@@ -448,6 +494,41 @@ get_call_argument <- function(mock, method, arg.number, call.number = 1) {
 	method.calls <- calls_to(mock, method)
 	return(call_args(method.calls)[[call.number]][[arg.number]])
 }
+
+
+#' Attempt to clean up mock methods
+#'
+#' This cleaning function is needed when residual mock methods are causing failures, e.g.
+#' their existance isn't expected. Typical symptoms of a need for a clean up are: 
+#' functions not found, Mocks complaining about not having registered methods, function 
+#' calls returning incorrect values.
+#' When called this function will attempt to clean up any existing mock methods. It does
+#' this by first replacing any new generics which were created with the original default
+#' values. After the methods have been removed, the "mock_methods" environment is 
+#' detached to clear any that were stored there.
+#' Fingers crossed, all will be well.
+#' 
+cleanMockMethods <- function() {
+	
+	if (any(grepl("mock_methods", search()))) {
+		for (method in get("new_S3_generics", pos = "mock_methods")) {
+			reassign_default(method)
+		}
+		detach("mock_methods")
+	}
+}
+
+reassign_default <- function(method) {
+
+	default <- paste(method, "default", sep = ".")
+	default.method <- try(getAnywhere(default)[1], silent = TRUE)
+	if (is.function(default.method)) {
+		assign(method, default.method, pos = environment(default.method))
+	}
+}
+
+
+
 
 
 
