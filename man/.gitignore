@@ -1,0 +1,11 @@
+/called_once_with.Rd
+/called_once.Rd
+/create_mock_call.Rd
+/Mock.Rd
+/mockMethod.Rd
+/TestthatHelpers-package.Rd
+/matchesObject.Rd
+/not_called.Rd
+/has_calls.Rd
+/get_call_argument.Rd
+/cleanMockMethods.Rd
