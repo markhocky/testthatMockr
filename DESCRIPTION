@@ -1,8 +1,8 @@
 Package: mockR
 Type: Package
 Title: Provides Mock object support to TestThat
-Version: 1.0
-Date: 2013-06-16
+Version: 0.0.0.9000
+Date: 2016-04-09
 Author: Mark Hochguertel
 Maintainer: Mark Hochguertel <markhocky@gmail.com>
 Description: To be used with testthat testing package. Provides objects which
@@ -10,11 +10,11 @@ Description: To be used with testthat testing package. Provides objects which
     extra functionality to testthat in terms of expectations methods.
 License: GPL-2
 Depends:
-    R (>= 3.0.0),
-    testthat,
-    methods
+    R (>= 3.2.0),
+    testthat
 Suggests:
-    devtools
+    devtools, 
+    methods
 Collate:
     'Mock.R'
     'TestHelpers.R'

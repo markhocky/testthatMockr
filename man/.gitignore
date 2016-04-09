@@ -9,3 +9,5 @@
 /has_calls.Rd
 /get_call_argument.Rd
 /cleanMockMethods.Rd
+/all_calls_on.Rd
+/call_args_for.Rd

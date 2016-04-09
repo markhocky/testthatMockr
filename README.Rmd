@@ -1,0 +1,92 @@
+---
+output:
+  md_document:
+    variant: markdown_github
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "README-"
+)
+```
+# Purpose
+The underlying purpose of testthatMockr is to facilitate better unit testing.
+It does this by allowing you to use Mock objects in place of real ones, which can make
+test setup faster and easier.
+
+Secondly it allows you to confirm certain actions have been taken in interacting with
+the mock object. You can check the unit you are testing has made a certain function call
+on the mock with defined parameters.
+
+It is mainly designed for use with object oriented development, which may not 
+suit everyone's needs.
+
+# Example
+The real benefit of using mocks (in my opinion at least) is when you want to test some
+part of your code and keep it separate in the test environment from the rest of the 
+complexity of your package.
+
+Here's an actual example of usage from something I was playing with. I wanted to check 
+my Broker object was talking to my Market, without actually having to build a Market 
+object with all the associated data behind it.  
+
+First building a mock Market:
+```{r eval=FALSE}
+market <- Mock("Market")
+```
+
+Next I note the function 'getBar' is something I want to track, and I specify that I 
+want it to return a specific value (but this is optional).  
+```{r eval=FALSE}
+ticker <- "AMP.AX"
+AMP.AX <- loadStocks(ticker)[[1]]
+timestamp <- "2010-01-04"
+mockMethod(market, "getBar", return.value = AMP.AX[timestamp])
+```
+
+Then we build and exercise the Broker:  
+```{r eval=FALSE}		
+broker <- Broker()
+broker <- addMarket(broker, market)
+bar <- getBar(broker, ticker, timestamp)
+```
+
+And we can then check that 'getBar' was called with specific parameters:  
+```{r eval=FALSE}
+expect_that(market, called_once_with("getBar", ticker, timestamp))
+```
+
+Check out the vignette for more examples.
+
+
+# Installation
+From your R console type:
+> install.packages("testthatMockr")
+
+# Further details
+Check out the vignette for more examples and discussion.
+> browseVignettes("testthatMockr")
+
+I've based this package functionality on the Python Mock module. It's might be worth
+having a look at that to get an idea of the type of functionality too.
+
+Following is a brief discussion of the main components to testthatMockr:
+## Mock objects
+Mock objects allow you to mimick the behaviour of other objects, and have control over
+certain behaviour as well as record some behaviour. They are often used in test driven
+development.
+
+## Mock methods
+Once you've created a mock you can assign certain methods to be a 'mock' method. This
+means you have full control over the output, and can record how the method was used on 
+the mock object.
+
+## Mock assertions
+The other main component of the package are several new assertions to be used in 
+testthat unit testing. These typically are used to assert that some function call was
+ made on the mock object.
+
