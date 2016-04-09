@@ -1,11 +1,11 @@
-Package: mockR
+Package: testthatMockr
 Type: Package
-Title: Provides Mock object support to TestThat
-Version: 0.0.0.9000
+Title: Provides Mock object support to testthat
+Version: 0.0.0
 Date: 2016-04-09
 Author: Mark Hochguertel
 Maintainer: Mark Hochguertel <markhocky@gmail.com>
-Description: To be used with testthat testing package. Provides objects which
+Description: To be used with testthat unit testing package. Provides objects which
     can be used to implement Mock methods and behaviour. Also supplies some
     extra functionality to testthat in terms of expectations methods.
 License: GPL-2

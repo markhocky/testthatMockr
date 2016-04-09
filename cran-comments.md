@@ -1,5 +1,6 @@
 ## Test Environment
 * local Ubuntu 14.04.02 LTS install
+* Windows using devtools::build_win()
 
 ## R CMD check results - run using devtools::check
 There were no ERRORs or WARNINGs
