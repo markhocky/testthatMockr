@@ -183,6 +183,8 @@ not_called <- function(method.name) {
 #' defaults to TRUE.
 #'
 #' @family assertions
+#' 
+#' @importFrom utils capture.output str
 #'  
 #' @export 
 matchesObject <- function(expected, ignore.attributes = TRUE) {

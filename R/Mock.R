@@ -28,6 +28,8 @@
 #' 
 #' @seealso \code{mockMethod}
 #' 
+#' @importFrom methods is isClass new representation setClass setGeneric setMethod signature
+#' 
 #' @export 
 Mock <- function(spec) {
 	
@@ -410,7 +412,9 @@ all_calls_on <- function(mock) {
 #' this by first replacing any new generics which were created with the original default
 #' values. After the methods have been removed, the "mock_methods" environment is 
 #' detached to clear any that were stored there.
-#' Fingers crossed, all will be well.
+#' Fingers crossed, all will be well. Worst case you may need to restart your R session.
+#' 
+#' @importFrom utils getAnywhere
 #' 
 #' @export
 cleanMockMethods <- function() {
