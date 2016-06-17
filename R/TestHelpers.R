@@ -245,8 +245,4 @@ setMethod("TestS4method",
 			return("S4 method")
 		})
 
-TestFunction <- function(x) {
-	sum(x)
-}
-
 

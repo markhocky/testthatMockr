@@ -111,6 +111,17 @@ test_that("Mock method overrides existing S4 method", {
 			expect_that(result.after.mock, equals("PASS"))
 		})
 
+test_that("Mock method allows continued use of original method", {
+			
+			TestMethod_5 <- function(x) sum(x)
+			mock <- Mock()
+			mockMethod(mock, "TestMethod_5")
+			
+			expect_that(TestMethod_5(c(2, 3)), equals(5))
+			expect_that(TestMethod_5(mock), equals(NULL))
+		})
+
+
 context("Mock method reporting")	
 
 test_that("Mock reports on method not called", {
@@ -344,17 +355,17 @@ context("Removing mock methods")
 
 test_that("Function returned to normal after cleaning", {
 			
+			TestFunction_6 <- function(x) {
+				sum(x)
+			}
+			
 			mock <- Mock()
 			mockMethod(mock, "TestFunction")
 			cleanMockMethods()
 			
-			holder <- list(c(1, 2), c(2, 3))
-			
-			sapplyTo <- function(x) sapply(x, TestFunction)
-			
-			expect_that(TestFunction(holder[[1]]), equals(3))
-			expect_that(TestFunction(holder[[2]]), equals(5))
-			expect_that(sapplyTo(holder), equals(c(3, 5)))
+			expect_that(TestFunction_6(c(1, 2)), equals(3))
+			expect_that(TestFunction_6(c(2, 3)), equals(5))
+			expect_that(TestFunction_6(mock), throws_error())
 		})
 
 

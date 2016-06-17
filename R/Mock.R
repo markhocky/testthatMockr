@@ -33,7 +33,6 @@
 #' @export 
 Mock <- function(spec) {
 	
-	setup_mock_namespace()
 	if (!missing(spec)) {
 		spec.name <- define_spec_name(spec)
 		mock <- create_mimic_mock(spec.name)
@@ -44,6 +43,9 @@ Mock <- function(spec) {
 }
 
 setClass("Mock", contains = "VIRTUAL")
+
+# character vector of modified S3 methods
+new_S3_generics <- character(0)
 
 define_spec_name <- function(spec) {
 	spec.name <- as.character(sys.call(-1L))[2]
@@ -70,28 +72,6 @@ create_mock <- function(name = "mock", contains = "Mock") {
 	mock@methods <- new.env(emptyenv())
 	mock@calls <- new.env(emptyenv())
 	return(mock)
-}
-
-setup_mock_namespace <- function() {
-	mock.methods.pos <- grep("mock_methods", search())
-	if (!length(mock.methods.pos)) {
-		create_mock_namespace()
-	} else {
-		ensure_namespace_at_top(mock.methods.pos)
-	}
-}
-
-create_mock_namespace <- function() {
-	attach(NULL, pos = 2L, name = "mock_methods")
-	# Intialise character vector for recording S3 generics which are created.
-	assign("new_S3_generics", character(0), pos = "mock_methods")
-}
-
-ensure_namespace_at_top <- function(mock.methods.pos) {
-	if (mock.methods.pos != 2) {
-		mock.methods.env <- detach("mock_methods")
-		attach(mock.methods.env, pos = 2L, name = "mock_methods")
-	}
 }
 
 
@@ -138,8 +118,9 @@ ensure_namespace_at_top <- function(mock.methods.pos) {
 #' on the existing function prior to setting the mock method may work. This is 
 #' potentially something to be included in future versions of \code{mockR}.
 #' When an existing function is turned into a generic, the name of the method is also 
-#' recorded in the \code{new_S3_generics} character vector (stored in \code{mock_methods})
-#' so that it can be removed safely (i.e. on call to \code{cleanMockMethods}.
+#' recorded in the \code{new_S3_generics} character vector located in the 
+#' \code{testthatMockr} namespace) so that it can be removed safely 
+#' (i.e. on call to \code{cleanMockMethods}.
 #' 
 #' @examples
 #' \dontrun{
@@ -193,7 +174,7 @@ is_function_but_notS4 <- function(method) {
 make_S4_generic <- function(method.name) {
 	generic <- paste0("function(mock, ...) standardGeneric(\"", method.name, "\")")
 	generic <- parse(text = generic)
-	setGeneric(method.name, eval(generic), where = "mock_methods")
+	setGeneric(method.name, eval(generic), where = "package:testthatMockr")
 	return(get(method.name))
 }
 
@@ -204,12 +185,12 @@ make_S3andS4_generics <- function(method.name, mock, method) {
 	if (!is_S3generic(method)) {
 		setAs_S3generic(method.name, method)
 	}
-	setGeneric(method.name, method, where = "mock_methods")
+	setGeneric(method.name, method, where = "package:testthatMockr")
 }
 
 assign_S3_method <- function(method.name, mock) {
 	assign(paste0(c(method.name, class(mock)), collapse = "."), create_mock_call(mock), 
-			pos = "mock_methods")
+			pos = "package:testthatMockr")
 }
 
 is_S3generic <- function(method) {
@@ -221,8 +202,8 @@ setAs_S3generic <- function(method.name, method) {
 	body(generic) <- parse(text = paste0("UseMethod(\"", method.name, "\")"))
 	assign(method.name, generic, pos = environment(method))
 	assign(paste0(method.name, ".default"), method, pos = environment(method))
-	newS3generics <- get("new_S3_generics", pos = "mock_methods")
-	assign("new_S3_generics", c(newS3generics, method.name), pos = "mock_methods")
+	newS3generics <- get("new_S3_generics", pos = "package:testthatMockr")
+	assign("new_S3_generics", c(newS3generics, method.name), pos = "package:testthatMockr")
 }
 
 no_dots_args <- function(method) {
@@ -240,7 +221,7 @@ assign_S4_method <- function(mock, method, method.name, return.value) {
 	setMethod(method.name,
 			signature(class(mock)),
 			mock.method, 
-			where = "mock_methods")
+			where = "package:testthatMockr")
 	assign_method_to(mock, method.name, return.value)
 }
 
@@ -419,12 +400,12 @@ all_calls_on <- function(mock) {
 #' @export
 cleanMockMethods <- function() {
 	
-	if (any(grepl("mock_methods", search()))) {
-		for (method in get("new_S3_generics", pos = "mock_methods")) {
+	if (any(grepl("new_S3_generics", ls(pos = "package:testthatMockr")))) {
+		for (method in get("new_S3_generics", pos = "package:testthatMockr")) {
 			reassign_default(method)
 		}
-		detach("mock_methods")
 	}
+	assign("new_S3_generics", character(0), pos = "package:testthatMockr")
 }
 
 reassign_default <- function(method) {
