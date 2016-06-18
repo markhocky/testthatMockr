@@ -1,6 +1,6 @@
 ## Resubmission
 I've fixed:
-* use of attach. Now uses package namespace for holding modified methods.
+* Previous use of attach. Now uses package namespace for holding modified methods.
   
 
 ## Test Environment
